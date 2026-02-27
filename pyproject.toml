@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "weather-edge"
+version = "0.1.0"
+description = "Weather prediction market edge finder"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31.0",
+    "httpx>=0.27.0",
+    "pandas>=2.1.0",
+    "numpy>=1.25.0",
+    "scipy>=1.11.0",
+    "scikit-learn>=1.3.0",
+    "statsmodels>=0.14.0",
+    "pyyaml>=6.0",
+    "streamlit>=1.28.0",
+    "plotly>=5.18.0",
+    "click>=8.1.0",
+    "schedule>=1.2.0",
+    "python-dotenv>=1.0.0",
+    "tenacity>=8.2.0",
+    "beautifulsoup4>=4.12.0",
+    "tqdm>=4.66.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+weather-edge = "weather_edge.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["weather_edge*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

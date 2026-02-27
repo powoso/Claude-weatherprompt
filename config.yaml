@@ -1,0 +1,217 @@
+# Weather Prediction Market Edge Finder - Configuration
+# =====================================================
+
+# General settings
+general:
+  data_dir: "data"
+  cache_dir: "data/cache"
+  log_dir: "logs"
+  log_level: "INFO"
+  timezone: "US/Eastern"
+
+# Data collection settings
+data_collection:
+  # NOAA / Open-Meteo historical data
+  historical:
+    years_back: 30
+    open_meteo_base_url: "https://archive-api.open-meteo.com/v1/archive"
+    noaa_cdo_base_url: "https://www.ncdc.noaa.gov/cdo-web/api/v2"
+    noaa_cdo_token: "${NOAA_CDO_TOKEN}"  # Set via environment variable
+    hurdat2_url: "https://www.nhc.noaa.gov/data/hurdat/hurdat2-1851-2024-040824.txt"
+    variables:
+      - temperature_2m_max
+      - temperature_2m_min
+      - precipitation_sum
+      - snowfall_sum
+      - windspeed_10m_max
+      - relative_humidity_2m_mean
+
+  # NWS / GFS / CPC forecasts
+  forecasts:
+    nws_api_base: "https://api.weather.gov"
+    nws_user_agent: "WeatherEdge/1.0 (weather-edge@example.com)"
+    gfs_nomads_base: "https://nomads.ncep.noaa.gov/dods/gfs_0p25"
+    cpc_outlook_url: "https://www.cpc.ncep.noaa.gov/products/predictions"
+    enso_status_url: "https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt"
+
+  # Prediction market sources
+  markets:
+    polymarket:
+      api_base: "https://clob.polymarket.com"
+      gamma_api: "https://gamma-api.polymarket.com"
+    kalshi:
+      api_base: "https://api.elections.kalshi.com/trade-api/v2"
+      # Kalshi requires auth for some endpoints
+      api_key: "${KALSHI_API_KEY}"
+      api_secret: "${KALSHI_API_SECRET}"
+
+  # Update frequency (in hours)
+  update_interval_hours: 6
+
+# Cities to track
+cities:
+  - name: "New York City"
+    state: "NY"
+    lat: 40.7128
+    lon: -74.0060
+    nws_office: "OKX"
+    nws_gridpoint: "33,37"
+    noaa_station: "USW00094728"  # Central Park
+    uhi_adjustment_f: 2.5  # Urban heat island offset
+
+  - name: "Los Angeles"
+    state: "CA"
+    lat: 34.0522
+    lon: -118.2437
+    nws_office: "LOX"
+    nws_gridpoint: "154,44"
+    noaa_station: "USW00023174"  # LAX
+    uhi_adjustment_f: 1.8
+
+  - name: "Chicago"
+    state: "IL"
+    lat: 41.8781
+    lon: -87.6298
+    nws_office: "LOT"
+    nws_gridpoint: "76,73"
+    noaa_station: "USW00094846"  # O'Hare
+    uhi_adjustment_f: 2.0
+
+  - name: "Houston"
+    state: "TX"
+    lat: 29.7604
+    lon: -95.3698
+    nws_office: "HGX"
+    nws_gridpoint: "65,97"
+    noaa_station: "USW00012960"
+    uhi_adjustment_f: 2.2
+
+  - name: "Phoenix"
+    state: "AZ"
+    lat: 33.4484
+    lon: -112.0740
+    nws_office: "PSR"
+    nws_gridpoint: "159,59"
+    noaa_station: "USW00023183"
+    uhi_adjustment_f: 3.0
+
+  - name: "Miami"
+    state: "FL"
+    lat: 25.7617
+    lon: -80.1918
+    nws_office: "MFL"
+    nws_gridpoint: "76,50"
+    noaa_station: "USW00012839"
+    uhi_adjustment_f: 1.5
+
+  - name: "Denver"
+    state: "CO"
+    lat: 39.7392
+    lon: -104.9903
+    nws_office: "BOU"
+    nws_gridpoint: "62,60"
+    noaa_station: "USW00023062"
+    uhi_adjustment_f: 1.5
+
+  - name: "Austin"
+    state: "TX"
+    lat: 30.2672
+    lon: -97.7431
+    nws_office: "EWX"
+    nws_gridpoint: "156,95"
+    noaa_station: "USW00013904"
+    uhi_adjustment_f: 1.8
+
+  - name: "Boston"
+    state: "MA"
+    lat: 42.3601
+    lon: -71.0589
+    nws_office: "BOX"
+    nws_gridpoint: "71,90"
+    noaa_station: "USW00014739"
+    uhi_adjustment_f: 2.0
+
+  - name: "Atlanta"
+    state: "GA"
+    lat: 33.7490
+    lon: -84.3880
+    nws_office: "FFC"
+    nws_gridpoint: "50,86"
+    noaa_station: "USW00013874"
+    uhi_adjustment_f: 2.0
+
+# Probability engine settings
+probability:
+  monte_carlo_simulations: 10000
+  bootstrap_samples: 5000
+  confidence_interval: 0.90
+  # Distribution fitting
+  temperature_distribution: "normal"  # normal, skewnorm, gev
+  precipitation_distribution: "gamma"
+  snowfall_distribution: "zero_inflated_gamma"
+  # Forecast bias correction
+  forecast_bias_window_days: 30
+  # Analog year matching
+  analog_top_n: 10
+  analog_enso_weight: 0.4
+  analog_sst_weight: 0.3
+  analog_pattern_weight: 0.3
+
+# Edge detection settings
+edge:
+  # Minimum edge (model prob - market prob) to flag as opportunity
+  min_edge_threshold: 0.05
+  # Kelly criterion
+  kelly_fraction: 0.5  # Half-Kelly (conservative default)
+  max_position_pct: 0.10  # Max 10% of bankroll on single bet
+  # Bankroll
+  initial_bankroll: 1000.0
+  # Market efficiency tiers (for prioritizing scans)
+  efficiency_tiers:
+    least_efficient:
+      - "seasonal_temperature"
+      - "hurricane_season"
+      - "seasonal_snowfall"
+    moderately_efficient:
+      - "weekly_temperature"
+      - "monthly_precipitation"
+    most_efficient:
+      - "next_day_temperature"
+      - "tropical_storm_track"
+
+# Alert settings
+alerts:
+  enabled: true
+  # Channels (configure at least one)
+  email:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    sender: "${ALERT_EMAIL_SENDER}"
+    password: "${ALERT_EMAIL_PASSWORD}"
+    recipients:
+      - "${ALERT_EMAIL_RECIPIENT}"
+  slack:
+    enabled: false
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+  discord:
+    enabled: false
+    webhook_url: "${DISCORD_WEBHOOK_URL}"
+  # Alert thresholds
+  new_opportunity_min_edge: 0.08
+  edge_widening_delta: 0.05
+
+# Dashboard settings
+dashboard:
+  host: "0.0.0.0"
+  port: 8501
+  refresh_interval_seconds: 300
+
+# Cron schedule (crontab syntax)
+cron:
+  # Run full update every 6 hours
+  full_update: "0 */6 * * *"
+  # Run market scan every hour
+  market_scan: "0 * * * *"
+  # Run daily calibration check at midnight
+  calibration_check: "0 0 * * *"
