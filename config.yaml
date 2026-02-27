@@ -204,7 +204,7 @@ alerts:
 # Dashboard settings
 dashboard:
   host: "0.0.0.0"
-  port: 8501
+  port: 5000
   refresh_interval_seconds: 300
 
 # Cron schedule (crontab syntax)

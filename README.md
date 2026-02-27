@@ -10,6 +10,21 @@ Find +EV opportunities on weather prediction markets (Polymarket, Kalshi) by com
 4. **Compare** model probabilities vs live market prices to find mispriced contracts
 5. **Size** bets using half-Kelly criterion with configurable max position limits
 
+## Web Dashboard
+
+A full-featured web dashboard built with Flask, Tailwind CSS, Chart.js, and Alpine.js. Dark-themed trading UI with five views:
+
+- **Opportunities** — Active contracts with model vs market probabilities, edge signals, Kelly sizing, and price convergence tracking
+- **Base Rates** — Interactive explorer for historical distributions, threshold exceedance rates, and year-by-year trends for any city/metric/month
+- **ENSO & Outlook** — Current El Nino/La Nina status, ONI time series chart, and impact guide for weather markets
+- **Calibration** — Predicted vs actual calibration curve, Brier score, and ROI tracking
+- **Bankroll** — Position sizing parameters, performance metrics, and market efficiency tier breakdown
+
+```bash
+weather-edge dashboard
+# Opens at http://localhost:5000
+```
+
 ## Install on macOS
 
 ### Prerequisites
@@ -53,7 +68,7 @@ Kalshi and alert webhook credentials are optional.
 ### Verify the install
 
 ```bash
-# Run the test suite
+# Run the test suite (49 tests)
 pytest
 
 # Check the CLI is available
@@ -98,15 +113,13 @@ weather-edge base-rates "Austin" -m snowfall_sum -t 0.1 --month 1
 weather-edge base-rates "Miami" -m precipitation_sum -t 2.0 --month 9
 ```
 
-### 4. Launch the dashboard
-
-Interactive Streamlit dashboard with five tabs: active opportunities, historical base rate explorer, ENSO status, model calibration, and bankroll management.
+### 4. Launch the web dashboard
 
 ```bash
-weather-edge dashboard
+weather-edge dashboard              # default: http://localhost:5000
+weather-edge dashboard -p 8080      # custom port
+weather-edge dashboard --debug      # debug mode with auto-reload
 ```
-
-Opens at `http://localhost:8501`.
 
 ### 5. Run continuously
 
@@ -126,7 +139,7 @@ All settings live in `config.yaml`:
 | `probability` | Monte Carlo sim count, bootstrap samples, distribution choices |
 | `edge` | Minimum edge threshold, Kelly fraction, max position size, bankroll |
 | `alerts` | Email/Slack/Discord webhook settings and alert thresholds |
-| `dashboard` | Host and port for Streamlit |
+| `dashboard` | Host and port for the web app |
 
 Add or remove cities by editing the `cities` list. Each city needs:
 
@@ -159,7 +172,8 @@ weather_edge/
   probability/        Monte Carlo temp, Poisson hurricane, logistic snow, engine
   edge/               Edge detection, Kelly sizing, calibration tracking
   alerts/             Email/Slack/Discord notifications
-  dashboard/          Streamlit app
+  webapp/             Flask web app (API + Tailwind/Chart.js/Alpine.js frontend)
+  dashboard/          Legacy Streamlit dashboard
   pipeline.py         Orchestrates ingest -> scan -> update flows
   cli.py              Click CLI entry point
 ```
@@ -167,7 +181,8 @@ weather_edge/
 ## Running Tests
 
 ```bash
-pytest                  # all tests
+pytest                  # all 49 tests
 pytest -v               # verbose
-pytest tests/test_probability.py  # single module
+pytest tests/test_webapp.py       # web app tests
+pytest tests/test_probability.py  # probability engine tests
 ```

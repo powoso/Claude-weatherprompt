@@ -92,20 +92,19 @@ def base_rates(ctx, city, metric, threshold, month):
 
 
 @main.command()
+@click.option("--host", default=None, help="Host to bind to")
+@click.option("--port", "-p", type=int, default=None, help="Port to bind to")
+@click.option("--debug", is_flag=True, help="Enable debug mode")
 @click.pass_context
-def dashboard(ctx):
-    """Launch the Streamlit dashboard."""
-    import subprocess
-    app_path = Path(__file__).parent / "dashboard" / "app.py"
+def dashboard(ctx, host, port, debug):
+    """Launch the web dashboard."""
+    from weather_edge.webapp.app import create_app
     cfg = ctx.obj["config"]
-    host = cfg.get("dashboard", {}).get("host", "0.0.0.0")
-    port = cfg.get("dashboard", {}).get("port", 8501)
+    host = host or cfg.get("dashboard", {}).get("host", "0.0.0.0")
+    port = port or cfg.get("dashboard", {}).get("port", 5000)
+    flask_app = create_app()
     click.echo(f"Launching dashboard at http://{host}:{port}")
-    subprocess.run([
-        sys.executable, "-m", "streamlit", "run", str(app_path),
-        "--server.address", host,
-        "--server.port", str(port),
-    ])
+    flask_app.run(host=host, port=port, debug=debug)
 
 
 @main.command()

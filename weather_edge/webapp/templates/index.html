@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Edge</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.0/dist/cdn.min.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            surface: { 50: '#f8fafc', 100: '#f1f5f9', 700: '#1a1f2e', 800: '#131825', 900: '#0c1017' },
+            accent: { DEFAULT: '#6366f1', light: '#818cf8', dark: '#4f46e5' },
+            positive: '#10b981',
+            negative: '#ef4444',
+            warn: '#f59e0b',
+          },
+        },
+      },
+    }
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body class="bg-surface-900 text-gray-100 font-sans antialiased min-h-screen" x-data="dashboard()">
+
+  <!-- Top bar -->
+  <header class="sticky top-0 z-50 border-b border-white/5 bg-surface-900/80 backdrop-blur-xl">
+    <div class="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-indigo-400 flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <h1 class="text-lg font-semibold tracking-tight">Weather Edge</h1>
+        <span class="hidden sm:inline text-xs text-gray-500 font-mono ml-2">v0.1.0</span>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-gray-500">
+        <span class="hidden md:inline">Prediction Market Edge Finder</span>
+        <span class="w-2 h-2 rounded-full animate-pulse" :class="loading ? 'bg-warn' : 'bg-positive'"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="border-b border-white/5 bg-surface-900/50">
+    <div class="max-w-[1440px] mx-auto px-6 flex gap-1 overflow-x-auto scrollbar-hide">
+      <template x-for="tab in tabs" :key="tab.id">
+        <button
+          @click="activeTab = tab.id"
+          class="relative px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors"
+          :class="activeTab === tab.id
+            ? 'text-accent-light'
+            : 'text-gray-500 hover:text-gray-300'"
+        >
+          <span x-text="tab.label"></span>
+          <div
+            x-show="activeTab === tab.id"
+            class="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full"
+            x-transition:enter="transition ease-out duration-200"
+          ></div>
+        </button>
+      </template>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="max-w-[1440px] mx-auto px-6 py-8">
+
+    <!-- ====================== OPPORTUNITIES TAB ====================== -->
+    <section x-show="activeTab === 'opportunities'" x-cloak>
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-2xl font-bold tracking-tight">Active Opportunities</h2>
+          <p class="text-sm text-gray-500 mt-1">Model probability vs market price</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <template x-if="oppData.is_sample">
+            <span class="px-2.5 py-1 text-xs font-medium rounded-full bg-warn/10 text-warn border border-warn/20">
+              Sample Data
+            </span>
+          </template>
+          <span class="text-xs text-gray-500 font-mono" x-show="oppData.last_scan"
+                x-text="'Last scan: ' + formatTime(oppData.last_scan)"></span>
+        </div>
+      </div>
+
+      <!-- Summary cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-5">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Contracts Found</p>
+          <p class="text-3xl font-bold mt-2 font-mono" x-text="oppData.count || 0"></p>
+        </div>
+        <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-5">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Best Edge</p>
+          <p class="text-3xl font-bold mt-2 font-mono"
+             :class="bestEdge > 0 ? 'text-positive' : 'text-gray-400'"
+             x-text="bestEdge !== null ? formatPct(bestEdge) : '--'"></p>
+        </div>
+        <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-5">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Total Kelly Size</p>
+          <p class="text-3xl font-bold mt-2 font-mono"
+             x-text="'$' + totalKelly.toFixed(2)"></p>
+        </div>
+      </div>
+
+      <!-- Opportunities table -->
+      <div class="rounded-xl bg-surface-800 border border-white/5 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-white/5 text-gray-500 text-xs uppercase tracking-wider">
+                <th class="px-5 py-3.5 text-left font-medium">Contract</th>
+                <th class="px-5 py-3.5 text-right font-medium">Model</th>
+                <th class="px-5 py-3.5 text-right font-medium">Market</th>
+                <th class="px-5 py-3.5 text-right font-medium">Edge</th>
+                <th class="px-5 py-3.5 text-right font-medium">Days Left</th>
+                <th class="px-5 py-3.5 text-right font-medium">Kelly Bet</th>
+                <th class="px-5 py-3.5 text-left font-medium">Signal</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+              <template x-for="opp in oppData.opportunities || []" :key="opp.contract_id">
+                <tr class="hover:bg-white/[0.02] transition-colors">
+                  <td class="px-5 py-4">
+                    <div class="font-medium text-gray-100 max-w-[320px] truncate" x-text="opp.title"></div>
+                    <div class="text-xs text-gray-500 mt-0.5" x-text="(opp.source || 'market').toUpperCase() + ' \u00b7 ' + (opp.category || 'weather')"></div>
+                  </td>
+                  <td class="px-5 py-4 text-right font-mono font-medium" x-text="formatPct(opp.model_prob)"></td>
+                  <td class="px-5 py-4 text-right font-mono text-gray-400" x-text="formatPct(opp.market_prob)"></td>
+                  <td class="px-5 py-4 text-right font-mono font-semibold"
+                      :class="opp.edge > 0 ? 'text-positive' : opp.edge < -0.02 ? 'text-negative' : 'text-gray-400'"
+                      x-text="formatEdge(opp.edge)"></td>
+                  <td class="px-5 py-4 text-right font-mono text-gray-400" x-text="opp.days_remaining ?? '--'"></td>
+                  <td class="px-5 py-4 text-right font-mono" x-text="opp.kelly_bet != null ? '$' + opp.kelly_bet.toFixed(2) : '--'"></td>
+                  <td class="px-5 py-4">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+                          :class="edgeClass(opp.edge)">
+                      <span class="w-1.5 h-1.5 rounded-full" :class="opp.edge > 0 ? 'bg-positive' : 'bg-gray-500'"></span>
+                      <span x-text="opp.edge >= 0.08 ? 'Strong' : opp.edge >= 0.05 ? 'Moderate' : opp.edge > 0 ? 'Weak' : 'No edge'"></span>
+                    </span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Convergence chart -->
+      <div class="mt-8 rounded-xl bg-surface-800 border border-white/5 p-6">
+        <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Price Convergence Tracker</h3>
+        <div class="h-64">
+          <canvas id="convergenceChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====================== BASE RATES TAB ====================== -->
+    <section x-show="activeTab === 'base_rates'" x-cloak>
+      <h2 class="text-2xl font-bold tracking-tight mb-2">Historical Base Rates</h2>
+      <p class="text-sm text-gray-500 mb-6">Explore climatological data for any city, metric, and month</p>
+
+      <!-- Controls -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div>
+          <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">City</label>
+          <select x-model="brCity" @change="fetchBaseRates()"
+                  class="w-full bg-surface-800 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent/50">
+            {% for city in cities %}
+            <option value="{{ city }}">{{ city }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Metric</label>
+          <select x-model="brMetric" @change="fetchBaseRates()"
+                  class="w-full bg-surface-800 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent/50">
+            <option value="temperature_2m_max">Daily High Temp (&deg;F)</option>
+            <option value="temperature_2m_min">Daily Low Temp (&deg;F)</option>
+            <option value="precipitation_sum">Precipitation (in)</option>
+            <option value="snowfall_sum">Snowfall (in)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Month</label>
+          <select x-model="brMonth" @change="fetchBaseRates()"
+                  class="w-full bg-surface-800 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent/50">
+            <option value="1">January</option><option value="2">February</option>
+            <option value="3">March</option><option value="4">April</option>
+            <option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8">August</option>
+            <option value="9">September</option><option value="10">October</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+        </div>
+      </div>
+
+      <template x-if="brData && !brData.error">
+        <div>
+          <!-- Stats row -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+            <div class="rounded-xl bg-surface-800 border border-white/5 p-4">
+              <p class="text-xs text-gray-500 uppercase tracking-wider">Mean</p>
+              <p class="text-xl font-bold font-mono mt-1" x-text="brData.stats.mean.toFixed(1)"></p>
+            </div>
+            <div class="rounded-xl bg-surface-800 border border-white/5 p-4">
+              <p class="text-xs text-gray-500 uppercase tracking-wider">Std Dev</p>
+              <p class="text-xl font-bold font-mono mt-1" x-text="brData.stats.std.toFixed(1)"></p>
+            </div>
+            <div class="rounded-xl bg-surface-800 border border-white/5 p-4">
+              <p class="text-xs text-gray-500 uppercase tracking-wider">10th %ile</p>
+              <p class="text-xl font-bold font-mono mt-1" x-text="brData.stats.p10.toFixed(1)"></p>
+            </div>
+            <div class="rounded-xl bg-surface-800 border border-white/5 p-4">
+              <p class="text-xs text-gray-500 uppercase tracking-wider">90th %ile</p>
+              <p class="text-xl font-bold font-mono mt-1" x-text="brData.stats.p90.toFixed(1)"></p>
+            </div>
+          </div>
+
+          <!-- Distribution chart + threshold table -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="rounded-xl bg-surface-800 border border-white/5 p-6">
+              <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Distribution</h3>
+              <div class="h-64">
+                <canvas id="histogramChart"></canvas>
+              </div>
+            </div>
+            <div class="rounded-xl bg-surface-800 border border-white/5 p-6">
+              <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Exceedance Rates</h3>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="border-b border-white/5 text-gray-500 text-xs uppercase tracking-wider">
+                      <th class="px-3 py-2 text-left font-medium">Threshold</th>
+                      <th class="px-3 py-2 text-right font-medium">Daily Rate</th>
+                      <th class="px-3 py-2 text-right font-medium">Any Year</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-white/5">
+                    <template x-for="r in brData.thresholds" :key="r.threshold">
+                      <tr class="hover:bg-white/[0.02]">
+                        <td class="px-3 py-2 font-mono" x-text="r.threshold"></td>
+                        <td class="px-3 py-2 text-right font-mono" x-text="(r.daily_rate * 100).toFixed(1) + '%'"></td>
+                        <td class="px-3 py-2 text-right font-mono" x-text="(r.yearly_rate * 100).toFixed(1) + '%'"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Year-by-year trend -->
+          <div class="rounded-xl bg-surface-800 border border-white/5 p-6">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Year-by-Year Trend</h3>
+            <div class="h-64">
+              <canvas id="yearlyChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="brData && brData.error">
+        <div class="rounded-xl bg-surface-800 border border-warn/20 p-8 text-center">
+          <p class="text-warn text-sm">No historical data for this city. Run <code class="bg-surface-700 px-1.5 py-0.5 rounded text-xs font-mono">weather-edge ingest</code> to download.</p>
+        </div>
+      </template>
+    </section>
+
+    <!-- ====================== ENSO TAB ====================== -->
+    <section x-show="activeTab === 'enso'" x-cloak>
+      <h2 class="text-2xl font-bold tracking-tight mb-2">ENSO Status & Seasonal Outlook</h2>
+      <p class="text-sm text-gray-500 mb-6">El Ni&ntilde;o / La Ni&ntilde;a monitoring</p>
+
+      <template x-if="ensoData && !ensoData.error">
+        <div>
+          <!-- Current phase cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <div class="rounded-xl border p-5" :class="ensoPhaseStyle(ensoData.current.phase)">
+              <p class="text-xs uppercase tracking-wider font-medium opacity-70">Current Phase</p>
+              <p class="text-2xl font-bold mt-2 capitalize" x-text="ensoData.current.phase.replace(/_/g, ' ')"></p>
+            </div>
+            <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-5">
+              <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">ONI Anomaly</p>
+              <p class="text-2xl font-bold mt-2 font-mono"
+                 :class="ensoData.current.anomaly >= 0.5 ? 'text-red-400' : ensoData.current.anomaly <= -0.5 ? 'text-blue-400' : 'text-gray-300'"
+                 x-text="(ensoData.current.anomaly >= 0 ? '+' : '') + ensoData.current.anomaly.toFixed(2) + '\u00b0C'"></p>
+            </div>
+            <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-5">
+              <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Period</p>
+              <p class="text-2xl font-bold mt-2" x-text="ensoData.current.season + ' ' + ensoData.current.year"></p>
+            </div>
+          </div>
+
+          <!-- ONI chart -->
+          <div class="rounded-xl bg-surface-800 border border-white/5 p-6 mb-8">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Oceanic Ni&ntilde;o Index Time Series</h3>
+            <div class="h-72">
+              <canvas id="ensoChart"></canvas>
+            </div>
+          </div>
+
+          <!-- ENSO impact info -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="rounded-xl bg-red-500/5 border border-red-500/10 p-5">
+              <div class="flex items-center gap-2 mb-3">
+                <div class="w-3 h-3 rounded-full bg-red-400"></div>
+                <h4 class="font-semibold text-red-300">El Ni&ntilde;o</h4>
+              </div>
+              <ul class="text-sm text-gray-400 space-y-1.5">
+                <li>Wetter/cooler in the South</li>
+                <li>Drier/warmer in the North</li>
+                <li class="text-red-300 font-medium">Suppresses Atlantic hurricanes</li>
+                <li>More snow in southern states</li>
+              </ul>
+            </div>
+            <div class="rounded-xl bg-gray-500/5 border border-gray-500/10 p-5">
+              <div class="flex items-center gap-2 mb-3">
+                <div class="w-3 h-3 rounded-full bg-gray-400"></div>
+                <h4 class="font-semibold text-gray-300">Neutral</h4>
+              </div>
+              <ul class="text-sm text-gray-400 space-y-1.5">
+                <li>Close to climatological norms</li>
+                <li>Base rates most reliable</li>
+                <li>Average hurricane activity</li>
+                <li>Use pure historical distributions</li>
+              </ul>
+            </div>
+            <div class="rounded-xl bg-blue-500/5 border border-blue-500/10 p-5">
+              <div class="flex items-center gap-2 mb-3">
+                <div class="w-3 h-3 rounded-full bg-blue-400"></div>
+                <h4 class="font-semibold text-blue-300">La Ni&ntilde;a</h4>
+              </div>
+              <ul class="text-sm text-gray-400 space-y-1.5">
+                <li>Drier in the South</li>
+                <li>Wetter/cooler in the North</li>
+                <li class="text-blue-300 font-medium">Enhances Atlantic hurricanes</li>
+                <li>Less snow in southern states</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="!ensoData || ensoData.error">
+        <div class="rounded-xl bg-surface-800 border border-warn/20 p-8 text-center">
+          <p class="text-warn text-sm">No ENSO data yet. Run <code class="bg-surface-700 px-1.5 py-0.5 rounded text-xs font-mono">weather-edge ingest</code> to download.</p>
+        </div>
+      </template>
+    </section>
+
+    <!-- ====================== CALIBRATION TAB ====================== -->
+    <section x-show="activeTab === 'calibration'" x-cloak>
+      <h2 class="text-2xl font-bold tracking-tight mb-2">Model Calibration</h2>
+      <p class="text-sm text-gray-500 mb-6">Predicted probability vs actual outcome rate</p>
+
+      <!-- Metrics row -->
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
+        <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-5">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Brier Score</p>
+          <p class="text-2xl font-bold mt-2 font-mono"
+             x-text="calData.brier_score != null ? calData.brier_score.toFixed(4) : '--'"></p>
+          <p class="text-xs text-gray-600 mt-1">Lower is better (0 = perfect)</p>
+        </div>
+        <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-5">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Total Predictions</p>
+          <p class="text-2xl font-bold mt-2 font-mono" x-text="calData.total_predictions || 0"></p>
+        </div>
+        <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-5">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Resolved</p>
+          <p class="text-2xl font-bold mt-2 font-mono" x-text="calData.resolved_predictions || 0"></p>
+        </div>
+        <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-5">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">ROI</p>
+          <p class="text-2xl font-bold mt-2 font-mono"
+             :class="(calData.roi?.roi_pct || 0) >= 0 ? 'text-positive' : 'text-negative'"
+             x-text="(calData.roi?.roi_pct >= 0 ? '+' : '') + (calData.roi?.roi_pct || 0).toFixed(1) + '%'"></p>
+        </div>
+      </div>
+
+      <template x-if="calData.is_sample">
+        <div class="mb-4">
+          <span class="px-2.5 py-1 text-xs font-medium rounded-full bg-warn/10 text-warn border border-warn/20">
+            Showing sample calibration curve &mdash; resolve predictions to see real data
+          </span>
+        </div>
+      </template>
+
+      <!-- Calibration chart -->
+      <div class="rounded-xl bg-surface-800 border border-white/5 p-6">
+        <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Calibration Curve</h3>
+        <div class="h-80">
+          <canvas id="calibrationChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====================== BANKROLL TAB ====================== -->
+    <section x-show="activeTab === 'bankroll'" x-cloak>
+      <h2 class="text-2xl font-bold tracking-tight mb-2">Bankroll Management</h2>
+      <p class="text-sm text-gray-500 mb-6">Position sizing and performance tracking</p>
+
+      <!-- Top metrics -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-6">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Starting Bankroll</p>
+          <p class="text-3xl font-bold mt-2 font-mono" x-text="'$' + (bankData.initial_bankroll || 0).toLocaleString('en-US', {minimumFractionDigits: 2})"></p>
+        </div>
+        <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-6">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Current Bankroll</p>
+          <p class="text-3xl font-bold mt-2 font-mono"
+             :class="(bankData.total_pnl || 0) >= 0 ? 'text-positive' : 'text-negative'"
+             x-text="'$' + (bankData.current_bankroll || 0).toLocaleString('en-US', {minimumFractionDigits: 2})"></p>
+          <p class="text-sm mt-1 font-mono"
+             :class="(bankData.total_pnl || 0) >= 0 ? 'text-positive/70' : 'text-negative/70'"
+             x-text="((bankData.total_pnl || 0) >= 0 ? '+' : '') + '$' + (bankData.total_pnl || 0).toFixed(2)"></p>
+        </div>
+        <div class="card-glow rounded-xl bg-surface-800 border border-white/5 p-6">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Return on Investment</p>
+          <p class="text-3xl font-bold mt-2 font-mono"
+             :class="(bankData.roi_pct || 0) >= 0 ? 'text-positive' : 'text-negative'"
+             x-text="((bankData.roi_pct || 0) >= 0 ? '+' : '') + (bankData.roi_pct || 0).toFixed(1) + '%'"></p>
+        </div>
+      </div>
+
+      <!-- Position sizing + bet stats -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div class="rounded-xl bg-surface-800 border border-white/5 p-6">
+          <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-5">Position Sizing</h3>
+          <div class="space-y-4">
+            <div class="flex justify-between items-center">
+              <span class="text-sm text-gray-400">Kelly Fraction</span>
+              <span class="font-mono font-semibold text-accent-light" x-text="((bankData.kelly_fraction || 0.5) * 100).toFixed(0) + '%'"></span>
+            </div>
+            <div class="w-full bg-surface-700 rounded-full h-2">
+              <div class="bg-accent rounded-full h-2 transition-all" :style="'width:' + ((bankData.kelly_fraction || 0.5) * 100) + '%'"></div>
+            </div>
+            <div class="flex justify-between items-center pt-2">
+              <span class="text-sm text-gray-400">Max Position</span>
+              <span class="font-mono font-semibold text-accent-light" x-text="((bankData.max_position_pct || 0.1) * 100).toFixed(0) + '%'"></span>
+            </div>
+            <div class="w-full bg-surface-700 rounded-full h-2">
+              <div class="bg-accent rounded-full h-2 transition-all" :style="'width:' + ((bankData.max_position_pct || 0.1) * 100) + '%'"></div>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-xl bg-surface-800 border border-white/5 p-6">
+          <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-5">Bet Stats</h3>
+          <div class="grid grid-cols-2 gap-6">
+            <div>
+              <p class="text-xs text-gray-500 uppercase">Total Bets</p>
+              <p class="text-2xl font-bold font-mono mt-1" x-text="bankData.n_bets || 0"></p>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 uppercase">Win Rate</p>
+              <p class="text-2xl font-bold font-mono mt-1" x-text="((bankData.win_rate || 0) * 100).toFixed(1) + '%'"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Efficiency tiers -->
+      <div class="rounded-xl bg-surface-800 border border-white/5 p-6">
+        <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-5">Market Efficiency Tiers</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="rounded-lg bg-positive/5 border border-positive/10 p-4">
+            <div class="flex items-center gap-2 mb-3">
+              <div class="w-2.5 h-2.5 rounded-full bg-positive"></div>
+              <h4 class="text-sm font-semibold text-positive">Least Efficient</h4>
+            </div>
+            <p class="text-xs text-gray-500 mb-2">Best opportunities for edge</p>
+            <template x-for="m in bankData.efficiency_tiers?.least_efficient || []">
+              <span class="inline-block mr-1.5 mb-1.5 px-2 py-0.5 text-xs font-mono rounded bg-positive/10 text-positive" x-text="m"></span>
+            </template>
+          </div>
+          <div class="rounded-lg bg-warn/5 border border-warn/10 p-4">
+            <div class="flex items-center gap-2 mb-3">
+              <div class="w-2.5 h-2.5 rounded-full bg-warn"></div>
+              <h4 class="text-sm font-semibold text-warn">Moderately Efficient</h4>
+            </div>
+            <p class="text-xs text-gray-500 mb-2">Some edge available</p>
+            <template x-for="m in bankData.efficiency_tiers?.moderately_efficient || []">
+              <span class="inline-block mr-1.5 mb-1.5 px-2 py-0.5 text-xs font-mono rounded bg-warn/10 text-warn" x-text="m"></span>
+            </template>
+          </div>
+          <div class="rounded-lg bg-gray-500/5 border border-gray-500/10 p-4">
+            <div class="flex items-center gap-2 mb-3">
+              <div class="w-2.5 h-2.5 rounded-full bg-gray-500"></div>
+              <h4 class="text-sm font-semibold text-gray-400">Most Efficient</h4>
+            </div>
+            <p class="text-xs text-gray-500 mb-2">Harder to find edge</p>
+            <template x-for="m in bankData.efficiency_tiers?.most_efficient || []">
+              <span class="inline-block mr-1.5 mb-1.5 px-2 py-0.5 text-xs font-mono rounded bg-gray-500/10 text-gray-400" x-text="m"></span>
+            </template>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-white/5 mt-12 py-6">
+    <div class="max-w-[1440px] mx-auto px-6 flex items-center justify-between text-xs text-gray-600">
+      <span>Weather Edge v0.1.0</span>
+      <span>Data: Open-Meteo &middot; NOAA &middot; NWS &middot; Polymarket &middot; Kalshi</span>
+    </div>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
